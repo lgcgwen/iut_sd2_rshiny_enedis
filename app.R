@@ -8,7 +8,7 @@ library(shinythemes)
 df_neufs <- read.csv("C:/Users/Utilisateur/Documents/Cours BUT 2éme année/R studio/neufs_69.csv", sep = ",", dec = ".", header = TRUE)
 df_existants <- read.csv("C:/Users/Utilisateur/Documents/Cours BUT 2éme année/R studio/existants_69.csv", sep = ",", dec = ".", header = TRUE)
 
-# Interface utilisateur
+# Interface utilisateur (UI)
 ui <- tagList(
   shinythemes::themeSelector(),
   navbarPage(
@@ -46,7 +46,7 @@ ui <- tagList(
   )
 )
 
-# Serveur
+# Serveur (server)
 server <- function(input, output) {
   
   # Sélection des données en fonction du choix de l'utilisateur
@@ -108,19 +108,46 @@ server <- function(input, output) {
     }
   })
   
-  # Cartographie Leaflet
+  # Cartographie Leaflet avec légende des couleurs DPE
   output$carte <- renderLeaflet({
     data <- selected_data()
     req(data)  # Vérifie que les données existent
-    if (all(c("lon", "lat") %in% colnames(data))) {
-      leaflet(data) %>% 
-        addTiles() %>% 
-        addMarkers(~lon, ~lat, popup = ~paste(Surface_habitable_logement, "m²"))
+    
+    # Vérifier que les colonnes "lon", "lat", "Etiquette_DPE", et "Code_postal_.BAN." existent
+    if (all(c("lon", "lat", "Etiquette_DPE", "Code_postal_.BAN.") %in% colnames(data))) {
+      
+      # Définir les couleurs pour chaque étiquette DPE
+      color_pal <- colorFactor(
+        palette = c("green", "lightgreen", "yellow", "orange", "darkorange", "red", "darkred"),
+        levels = c("A", "B", "C", "D", "E", "F", "G")
+      )
+      
+      # Création de la carte centrée sur Lyon (coordonnées de Lyon : environ 45.75, 4.85)
+      leaflet(data) %>%
+        addTiles() %>%
+        setView(lng = 4.85, lat = 45.75, zoom = 12) %>%  # Centrer sur Lyon avec un zoom adapté
+        addCircleMarkers(~lon, ~lat,
+                         radius = 5,
+                         color = ~color_pal(Etiquette_DPE),
+                         fill = TRUE,
+                         fillOpacity = 0.8,
+                         popup = ~paste(
+                           "Surface :", Surface_habitable_logement, "m²", "<br>",
+                           "Type de bâtiment :", Type_bâtiment, "<br>",
+                           "Etiquette DPE :", Etiquette_DPE, "<br>",
+                           "Code postal :", Code_postal_.BAN.  # Ajout de l'info du code postal
+                         )
+        ) %>%
+        addLegend("bottomright", pal = color_pal, values = ~Etiquette_DPE,
+                  title = "Etiquette DPE",
+                  opacity = 1)
+      
     } else {
-      print("Les colonnes 'lon' ou 'lat' n'existent pas.")
+      print("Les colonnes 'lon', 'lat', 'Etiquette_DPE' ou 'Code_postal_.BAN.' n'existent pas dans les données.")
     }
   })
 }
 
 # Exécution de l'application
 shinyApp(ui = ui, server = server)
+
