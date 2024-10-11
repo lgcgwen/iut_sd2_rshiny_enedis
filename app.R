@@ -174,13 +174,16 @@ server <- function(input, output) {
     data <- selected_data()
     req(data)
     if ("Type_bâtiment" %in% colnames(data)) {
-      data %>%
+      type_counts <- data %>%
         count(Type_bâtiment) %>%
-        ggplot(aes(x = "", y = n, fill = Type_bâtiment)) +
+        mutate(percentage = n / sum(n) * 100) # Calcul des pourcentages
+      
+      ggplot(type_counts, aes(x = "", y = percentage, fill = Type_bâtiment)) +
         geom_bar(stat = "identity", width = 1) +
         coord_polar("y") +
         theme_void() +
-        labs(title = "Répartition des types de bâtiments")
+        labs(title = "Répartition des types de bâtiments") +
+        geom_text(aes(label = paste0(round(percentage, 1), "%")), position = position_stack(vjust = 0.5)) # Ajout des étiquettes de pourcentage
     } else {
       print("La colonne 'Type_bâtiment' n'existe pas.")
     }
