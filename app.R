@@ -13,6 +13,19 @@ ui <- tagList(
   shinythemes::themeSelector(),
   navbarPage(
     "shinythemes",
+    # Page de connexion
+    tabPanel("Connexion",
+             sidebarPanel(
+               textInput("username", "Nom d'utilisateur"),
+               passwordInput("password", "Mot de passe"),
+               actionButton("login", "Se connecter"),
+               textOutput("login_status")
+             ),
+             mainPanel(
+               h3("Veuillez vous connecter pour accéder à l'application.")
+             )
+    ),
+    # Autres onglets
     tabPanel("Statistiques générales", 
              sidebarPanel(
                radioButtons("dataset", "Sélectionner le jeu de données:",
@@ -21,7 +34,6 @@ ui <- tagList(
                sliderInput("slider", "Slider input:", 1, 100, 30),
                tags$h5("Default actionButton:"),
                actionButton("action", "Search"),
-               
                tags$h5("actionButton with CSS class:"),
                actionButton("action2", "Action button", class = "btn-primary")
              ),
@@ -30,8 +42,8 @@ ui <- tagList(
                  tabPanel("Répartition des types de bâtiments", 
                           plotOutput("hist_type_batiment")
                  ),
-                 tabPanel("Nombre de logements par code postal", 
-                          plotOutput("hist_code_postal")
+                 tabPanel("Nuage de points - Code postal",  # Nouvel onglet pour le nuage de points
+                          plotOutput("scatter_code_postal")
                  ),
                  tabPanel("Nb logement / Etiquette DPE", 
                           plotOutput("hist_dpe")
@@ -61,10 +73,22 @@ ui <- tagList(
 )
 
 # Serveur (server)
-server <- function(input, output) {
+server <- function(input, output, session) {
+  
+  # Variables réactives pour la connexion
+  user_authenticated <- reactiveVal(FALSE)
+  
+  # Gestion de la connexion
+  observeEvent(input$login, {
+    # Autoriser toute combinaison de nom d'utilisateur et mot de passe
+    user_authenticated(TRUE)
+    output$login_status <- renderText("Connexion réussie!")
+    updateTabsetPanel(session, "tabs", selected = "Statistiques générales")  # Aller à l'onglet Statistiques
+  })
   
   # Sélection des données en fonction du choix de l'utilisateur
   selected_data <- reactive({
+    req(user_authenticated())  # Nécessite une connexion réussie
     if (input$dataset == "neufs") {
       df_neufs
     } else {
@@ -72,8 +96,9 @@ server <- function(input, output) {
     }
   })
   
-  # Plot 1: Histogramme de la répartition des types de bâtiments
+  # Plots et autres fonctions de l'application, conditionnés par l'authentification
   output$hist_type_batiment <- renderPlot({
+    req(user_authenticated())
     data <- selected_data()
     req(data)
     if ("Type_bâtiment" %in% colnames(data)) {
@@ -86,23 +111,27 @@ server <- function(input, output) {
     }
   })
   
-  # Plot 2: Histogramme du nombre de logements par code postal (Code_postal_.BAN.)
-  output$hist_code_postal <- renderPlot({
+  
+  # Nuage de points pour les codes postaux
+  output$scatter_code_postal <- renderPlot({
+    req(user_authenticated())
     data <- selected_data()
     req(data)
-    if ("Code_postal_.BAN." %in% colnames(data)) {
-      data <- data %>% filter(!is.na(Code_postal_.BAN.) & Code_postal_.BAN. != 0)
-      ggplot(data, aes(x = Code_postal_.BAN.)) +
-        geom_histogram(binwidth = 1, fill = "blue", color = "white") +
+    if ("Code_postal_.BAN." %in% colnames(data) && "Surface_habitable_logement" %in% colnames(data)) {
+      ggplot(data, aes(x = Code_postal_.BAN., y = Surface_habitable_logement)) +
+        geom_point(alpha = 0.6, color = "blue") +
         theme_minimal() +
-        labs(title = "Nombre de logements par code postal", x = "Code postal", y = "Nombre de logements")
+        labs(title = "Nuage de points - Code postal vs Surface habitable", 
+             x = "Code Postal", 
+             y = "Surface Habitable (m²)") +
+        theme(legend.position = "none")
     } else {
-      print("La colonne 'Code_postal_.BAN.' n'existe pas.")
+      print("Les colonnes 'Code_postal_.BAN.' ou 'Surface_habitable_logement' n'existent pas.")
     }
   })
   
-  # Plot 3: Histogramme du nombre de logements par étiquette DPE
   output$hist_dpe <- renderPlot({
+    req(user_authenticated())
     data <- selected_data()
     req(data)
     if ("Etiquette_DPE" %in% colnames(data)) {
@@ -115,8 +144,8 @@ server <- function(input, output) {
     }
   })
   
-  # Cartographie Leaflet avec légende des couleurs DPE
   output$carte <- renderLeaflet({
+    req(user_authenticated())
     data <- selected_data()
     req(data)
     if (all(c("lon", "lat", "Etiquette_DPE", "Code_postal_.BAN.") %in% colnames(data))) {
@@ -147,20 +176,22 @@ server <- function(input, output) {
     }
   })
   
-  # KPI: Calcul du nombre total de logements, surface moyenne et proportion des logements neufs
   output$kpi_nb_logements <- renderText({
+    req(user_authenticated())
     data <- selected_data()
     req(data)
     paste("Nombre total de logements :", nrow(data))
   })
   
   output$kpi_surface_moyenne <- renderText({
+    req(user_authenticated())
     data <- selected_data()
     req(data)
     paste("Surface habitable moyenne :", round(mean(data$Surface_habitable_logement, na.rm = TRUE), 2), "m²")
   })
   
   output$kpi_logements_neufs <- renderText({
+    req(user_authenticated())
     data <- selected_data()
     req(data)
     nb_neufs <- nrow(df_neufs)
@@ -169,8 +200,8 @@ server <- function(input, output) {
     paste("Pourcentage de logements neufs :", pourcentage_neufs, "%")
   })
   
-  # Graphique en camembert (pie chart) pour la répartition des types de bâtiments
   output$pie_chart <- renderPlot({
+    req(user_authenticated())
     data <- selected_data()
     req(data)
     if ("Type_bâtiment" %in% colnames(data)) {
@@ -189,8 +220,8 @@ server <- function(input, output) {
     }
   })
   
-  # Boîte à moustaches (boxplot) de la surface en fonction de l'étiquette DPE
   output$boxplot_dpe <- renderPlot({
+    req(user_authenticated())
     data <- selected_data()
     req(data)
     if (all(c("Surface_habitable_logement", "Etiquette_DPE") %in% colnames(data))) {
