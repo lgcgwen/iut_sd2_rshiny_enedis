@@ -1,0 +1,115 @@
+---
+title: "Étude des Logements en Région Auvergne-Rhône-Alpes par Code Postal"
+author: "Ton Nom"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+# Chargement des bibliothèques nécessaires
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(knitr)
+
+# Options générales
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Fonction pour obtenir les données des logements en fonction du type
+get_data <- function(type) {
+  url <- ifelse(type == "neuf",
+                "https://data.ademe.fr/datasets/dpe-v2-logements-neufs/api-doc",
+                "https://data.ademe.fr/datasets/dpe-v2-logements-existants/api-doc")
+  response <- GET(url)
+  content <- fromJSON(content(response, "text"))
+  return(content)
+}
+
+# Chargement des données
+logements_neufs <- get_data("neuf")
+logements_existants <- get_data("ancien")
+
+# Filtrer par code postal et région AURA
+code_postal <- "69000"  # Remplacer par un code postal dynamique plus tard
+region_aura <- c("Auvergne-Rhône-Alpes") # Région AURA
+
+logements <- bind_rows(logements_neufs, logements_existants) %>%
+  filter(code_postal == !!code_postal, region == !!region_aura)
+```
+
+```{r}
+# Calcul des KPIs
+kpis <- logements %>%
+  summarise(
+    total_logements = n(),
+    surface_moyenne = mean(surface_habitable, na.rm = TRUE),
+    consommation_energie = mean(consommation_energie, na.rm = TRUE),
+    emissions_ges = mean(emissions_ges, na.rm = TRUE)
+  )
+
+# Affichage des KPIs
+kable(kpis, caption = "Principaux Indicateurs de Performance")
+```
+
+Les KPIs présentés ci-dessus montrent les indicateurs principaux tels que le nombre total de logements, la surface habitable moyenne, la consommation d'énergie et les émissions de gaz à effet de serre (GES). Cela nous permet d'avoir une vue d'ensemble des logements dans la région sélectionnée.
+
+```{r}
+# Analyse Statistique Bivariée
+ggplot(logements, aes(x = consommation_energie, y = emissions_ges)) +
+  geom_point() +
+  labs(
+    title = "Relation entre Consommation d'Énergie et Émissions de GES",
+    x = "Consommation d'Énergie (kWh)",
+    y = "Émissions de GES (kg CO2)"
+  )
+
+```
+Le graphique ci-dessus illustre la relation entre la consommation d'énergie et les émissions de GES. Ce graphique de dispersion permet de voir si les logements ayant une consommation énergétique plus élevée sont aussi ceux qui émettent le plus de GES, ce qui peut donner des indications sur l'efficacité énergétique de ces logements.
+```{r}
+# Carte des Logements
+leaflet(data = logements) %>%
+  addTiles() %>%
+  addCircles(lng = ~longitude, lat = ~latitude, weight = 1,
+             radius = ~surface_habitable * 10,
+             popup = ~paste("Surface :", surface_habitable, "m²", "<br>",
+                            "Consommation Énergie :", consommation_energie)) %>%
+  addLegend("bottomright", title = "Type de Logement",
+            colors = c("blue", "green"), labels = c("Neuf", "Existant"))
+```
+Cette carte interactive montre l'emplacement des logements dans le code postal sélectionné, avec des cercles dont la taille représente la surface habitable. Les utilisateurs peuvent cliquer sur les cercles pour obtenir plus de détails sur chaque logement, tels que la surface et la consommation d'énergie.
+```{r}
+# Distribution des Surfaces
+ggplot(logements, aes(x = surface_habitable, fill = type_logement)) +
+  geom_histogram(binwidth = 10, position = "dodge") +
+  labs(
+    title = "Distribution des Surfaces Habitables",
+    x = "Surface Habitable (m²)",
+    y = "Nombre de Logements"
+  )
+```
+Le graphique ci-dessus montre la distribution des surfaces habitables des logements dans le code postal étudié. En comparant les logements neufs et existants, on peut observer s'il existe des différences notables dans la taille des logements selon leur type, ce qui peut offrir des insights intéressants sur le marché immobilier local.
+
+Dans cette étude, nous avons exploré les caractéristiques des logements en région Auvergne-Rhône-Alpes, en analysant les logements neufs et existants via plusieurs KPIs et des visualisations pertinentes.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
