@@ -39,11 +39,6 @@ ui <- tagList(
     tabPanel("Statistiques générales", 
              sidebarPanel(
                textInput("txt", "Text input:", "general"),
-               sliderInput("slider", "Slider input:", 1, 100, 30),
-               tags$h5("Default actionButton:"),
-               actionButton("action", "Search"),
-               tags$h5("actionButton with CSS class:"),
-               actionButton("action2", "Action button", class = "btn-primary")
              ),
              mainPanel(
                tabsetPanel(
@@ -83,21 +78,10 @@ ui <- tagList(
     ),
     tabPanel("KPI et graphiques", 
              fluidRow(
-               # Sélecteur pour le code postal
-               column(12, 
-                      h3("Filtrer par Code Postal"),
-                      selectInput("code_postal", "Choisir un code postal :", 
-                                  choices = unique(df_logement$Code_postal_.BAN.),  # Remplacez par le nom de votre colonne de code postal
-                                  selected = unique(df_logement$Code_postal_.BAN.)[1],
-                                  multiple = FALSE)  # Permettre la sélection d'un seul code postal
-               )
-             ),
-             fluidRow(
                # Ajout des KPI en haut
                column(12, h3("KPI"),
                       textOutput("kpi_nb_logements"),
                       textOutput("kpi_surface_moyenne")
-                      # textOutput("kpi_logements_neufs")  # Si vous avez besoin de ce KPI, décommentez cette ligne
                )
              ),
              fluidRow(
@@ -345,25 +329,25 @@ output$carte <- renderLeaflet({
   }
 })
   
-   # Calcul des KPI
-  output$kpi_nb_logements <- renderText({
-    req(user_authenticated())  # Vérifie si l'utilisateur est authentifié
-    data <- selected_data()     # Sélection des données
-    
-    # Affiche le nombre total de logements
-    paste("Nombre total de logements :", nrow(data))
-  })
+# Calcul des KPI
+output$kpi_nb_logements <- renderText({
+  req(user_authenticated())  # Vérifie si l'utilisateur est authentifié
+  data <- selected_data()     # Sélection des données
   
-  output$kpi_surface_moyenne <- renderText({
-    req(user_authenticated())  # Vérifie si l'utilisateur est authentifié
-    data <- selected_data()     # Sélection des données
-    
-    # Calcul de la surface habitable moyenne
-    surface_moyenne <- round(mean(data$Surface_habitable_logement, na.rm = TRUE), 2)
-    
-    # Affiche la surface habitable moyenne
-    paste("Surface habitable moyenne :", surface_moyenne, "m²")
-  })
+  # Affiche le nombre total de logements
+  paste("Nombre total de logements :", nrow(data))
+})
+
+output$kpi_surface_moyenne <- renderText({
+  req(user_authenticated())  # Vérifie si l'utilisateur est authentifié
+  data <- selected_data()     # Sélection des données
+  
+  # Calcul de la surface habitable moyenne
+  surface_moyenne <- round(mean(data$Surface_habitable_logement, na.rm = TRUE), 2)
+  
+  # Affiche la surface habitable moyenne
+  paste("Surface habitable moyenne :", surface_moyenne, "m²")
+})
   # Diagramme circulaire des types de bâtiments
   output$pie_chart <- renderPlot({
     req(user_authenticated())
