@@ -74,7 +74,12 @@ ui <- tagList(
              )
     ),
     tabPanel("Cartographie", 
-             leafletOutput("carte")
+             sidebarPanel(
+               actionButton("refresh_data", "Actualiser les données")
+             ),
+             mainPanel(
+               leafletOutput("carte")
+             )
     ),
     tabPanel("KPI et graphiques", 
              fluidRow(
@@ -248,64 +253,97 @@ server <- function(input, output, session) {
     req(user_authenticated())
     str(selected_data())  # Affiche la structure des colonnes du jeu de données
   })
+  # Simuler une fonction qui récupère les nouvelles données via une API
+  get_new_data <- function() {
+    # Simulez la récupération de données avec un délai
+    Sys.sleep(2)  # Simule un temps de récupération de données
+    
+    # Remplacez par l'appel API réel avec httr, jsonlite, etc.
+    new_data <- df_logement  # Simule l'obtention de nouvelles données
+    
+    # Ajoutez du bruit aux données pour simuler des changements
+    new_data$Surface_habitable_logement <- new_data$Surface_habitable_logement + rnorm(nrow(new_data), mean = 0, sd = 5)
+    
+    return(new_data)
+  }
   
-  # Cartographie - modification pour limiter à 1000 points
-  output$carte <- renderLeaflet({
-    req(user_authenticated())
-    data <- selected_data()
+ # Créer une variable réactive pour les données de la carte
+carte_data <- reactiveVal(df_logement)  # Initialise avec les données existantes
+
+# Observer l'événement d'actualisation des données
+observeEvent(input$refresh_data, {
+  # Affiche un message pour informer que les données sont en cours d'actualisation
+  showModal(modalDialog("Mise à jour des données, veuillez patienter...", footer = NULL))
+  
+  # Appeler la fonction pour récupérer les nouvelles données
+  new_data <- get_new_data()
+  
+  # Mettre à jour la variable réactive avec les nouvelles données
+  carte_data(new_data)
+  
+  # Fermer le modal une fois les données mises à jour
+  removeModal()
+})
+
+# Mise à jour de la carte avec les nouvelles données
+output$carte <- renderLeaflet({
+  req(user_authenticated())
+  
+  # Récupérer les données mises à jour
+  data <- carte_data()
+  
+  # Filtrer les données pour supprimer les lignes avec des valeurs manquantes pour lon et lat
+  data_filtered <- data %>%
+    filter(!is.na(lon) & !is.na(lat) & lon != 0 & lat != 0)  # Suppression des valeurs NA et 0
+  
+  # Définir les limites de la zone de Lyon et de ses arrondissements
+  lyon_lat_min <- 45.70
+  lyon_lat_max <- 45.85
+  lyon_lon_min <- 4.80
+  lyon_lon_max <- 4.90  # Limite ajustée pour Lyon uniquement
+  
+  # Filtrer pour ne garder que les données de Lyon et ses arrondissements
+  data_filtered <- data_filtered %>%
+    filter(lat >= lyon_lat_min & lat <= lyon_lat_max &
+             lon >= lyon_lon_min & lon <= lyon_lon_max)
+  
+  # Limiter les points à 1000 en prenant un échantillon aléatoire
+  if (nrow(data_filtered) > 1000) {
+    data_filtered <- data_filtered %>% sample_n(1000)
+  }
+  
+  # Vérifier s'il y a des données à afficher
+  if (nrow(data_filtered) > 0) {
+    # Palette de couleurs
+    color_pal <- colorFactor(
+      palette = c("lightgreen", "yellow", "orange", "darkorange", "red", "darkred"),
+      levels = c("A", "B", "C", "D", "E", "F", "G")
+    )
     
-    # Filtrer les données pour supprimer les lignes avec des valeurs manquantes pour lon et lat
-    data_filtered <- data %>%
-      filter(!is.na(lon) & !is.na(lat) & lon != 0 & lat != 0)  # Suppression des valeurs NA et 0
-    
-    # Définir les limites de la zone de Lyon et de ses arrondissements
-    lyon_lat_min <- 45.70
-    lyon_lat_max <- 45.85
-    lyon_lon_min <- 4.80
-    lyon_lon_max <- 4.90  # Limite ajustée pour Lyon uniquement
-    
-    # Filtrer pour ne garder que les données de Lyon et ses arrondissements
-    data_filtered <- data_filtered %>%
-      filter(lat >= lyon_lat_min & lat <= lyon_lat_max &
-               lon >= lyon_lon_min & lon <= lyon_lon_max)
-    
-    # Limiter les points à 1000 en prenant un échantillon aléatoire
-    if (nrow(data_filtered) > 1000) {
-      data_filtered <- data_filtered %>% sample_n(1000)
-    }
-    
-    # Vérifier s'il y a des données à afficher
-    if (nrow(data_filtered) > 0) {
-      # Palette de couleurs
-      color_pal <- colorFactor(
-        palette = c("lightgreen", "yellow", "orange", "darkorange", "red", "darkred"),
-        levels = c("A", "B", "C", "D", "E", "F", "G")
-      )
-      
-      leaflet(data_filtered) %>%
-        addTiles() %>%
-        setView(lng = 4.85, lat = 45.75, zoom = 12) %>%
-        addCircleMarkers(~lon, ~lat,
-                         radius = 5,
-                         color = ~color_pal(Etiquette_DPE),
-                         fill = TRUE,
-                         fillOpacity = 0.8,
-                         popup = ~paste(
-                           "Surface :", Surface_habitable_logement, "m²", "<br>",
-                           "Type de bâtiment :", Type_bâtiment, "<br>",
-                           "Etiquette DPE :", Etiquette_DPE, "<br>",
-                           "Code postal :", Code_postal_.BAN.
-                         )
-        ) %>%
-        addLegend("bottomright", pal = color_pal, values = ~Etiquette_DPE,
-                  title = "Etiquette DPE", opacity = 1)
-    } else {
-      leaflet() %>%
-        addTiles() %>%
-        setView(lng = 4.85, lat = 45.75, zoom = 12) %>%
-        addPopups(lng = 4.85, lat = 45.75, "Aucune donnée valide à afficher.")
-    }
-  })
+    leaflet(data_filtered) %>%
+      addTiles() %>%
+      setView(lng = 4.85, lat = 45.75, zoom = 12) %>%
+      addCircleMarkers(~lon, ~lat,
+                       radius = 5,
+                       color = ~color_pal(Etiquette_DPE),
+                       fill = TRUE,
+                       fillOpacity = 0.8,
+                       popup = ~paste(
+                         "Surface :", Surface_habitable_logement, "m²", "<br>",
+                         "Type de bâtiment :", Type_bâtiment, "<br>",
+                         "Etiquette DPE :", Etiquette_DPE, "<br>",
+                         "Code postal :", Code_postal_.BAN.
+                       )
+      ) %>%
+      addLegend("bottomright", pal = color_pal, values = ~Etiquette_DPE,
+                title = "Etiquette DPE", opacity = 1)
+  } else {
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = 4.85, lat = 45.75, zoom = 12) %>%
+      addPopups(lng = 4.85, lat = 45.75, "Aucune donnée valide à afficher.")
+  }
+})
   
    # Calcul des KPI
   output$kpi_nb_logements <- renderText({
