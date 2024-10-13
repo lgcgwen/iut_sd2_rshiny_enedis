@@ -1,0 +1,179 @@
+
+---
+title: "Rapport d’étude - Performance Énergétique"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+# Installation et chargement des packages nécessaires
+knitr::opts_chunk$set(echo = FALSE)  # Masque le code dans tous les chunks
+if (!require(ggplot2)) install.packages('ggplot2', dependencies=TRUE)
+if (!require(dplyr)) install.packages('dplyr', dependencies=TRUE)
+
+library(ggplot2)
+library(dplyr)
+```
+
+# Introduction
+
+Ce rapport présente une analyse des performances énergétiques des logements en France, en se basant sur deux bases de données : les logements existants et les logements neufs.
+
+# Chargement des Données
+
+```{r}
+# Chargement des données CSV
+existing_data <- read.csv("donnees_dpe_existant_renamed.csv", sep = ",", stringsAsFactors = FALSE)
+new_data <- read.csv("donnees_dpe_neufs_renamed.csv", sep = ",", stringsAsFactors = FALSE)
+
+# Nettoyage des colonnes pour éviter les caractères spéciaux
+colnames(existing_data) <- gsub("[^[:alnum:]_]", "", colnames(existing_data))
+colnames(new_data) <- gsub("[^[:alnum:]_]", "", colnames(new_data))
+
+# Filtrage des colonnes communes
+common_cols <- intersect(colnames(existing_data), colnames(new_data))
+existing_data <- existing_data[, common_cols]
+new_data <- new_data[, common_cols]
+
+# Ajout d'une colonne pour différencier les logements anciens et neufs
+existing_data$Type_DPE <- "ancien"
+new_data$Type_DPE <- "neuf"
+
+# Combinaison des deux bases de données
+all_data <- rbind(existing_data, new_data)
+```
+
+# KPI Pertinents
+
+```{r}
+# Calcul des moyennes des consommations pour l'ensemble des données
+kpi_data <- all_data %>%
+  summarise(mean_chauffage = mean(Conso_chauffage_é_finale, na.rm = TRUE),
+            mean_ECS = mean(Conso_ECS_dépensier_é_finale, na.rm = TRUE),
+            mean_eclairage = mean(Conso_éclairage_é_finale, na.rm = TRUE))
+
+# Affichage des KPI
+kpi_data
+```
+
+# Statistiques Bivariées
+
+## Consommation de chauffage par code postal (Top 10 codes postaux)
+
+```{r}
+# Regrouper par code postal et calculer la consommation moyenne de chauffage
+top_codes <- all_data %>%
+  group_by(Code_Postal_BAN) %>%
+  summarise(mean_chauffage = mean(Conso_chauffage_é_finale, na.rm = TRUE)) %>%
+  arrange(desc(mean_chauffage)) %>%
+  top_n(10)
+
+# Boxplot pour les 10 principaux codes postaux
+ggplot(top_codes, aes(x = reorder(Code_Postal_BAN, -mean_chauffage), y = mean_chauffage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Top 10 Codes Postaux par Consommation de Chauffage Moyenne", 
+       x = "Code Postal", y = "Consommation Moyenne de Chauffage (kWh)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Répartition des étiquettes DPE (Top 10 codes postaux)
+
+```{r}
+# Regrouper par code postal et étiquette DPE
+top_codes_DPE <- all_data %>%
+  filter(Code_Postal_BAN %in% top_codes$Code_Postal_BAN) %>%
+  group_by(Code_Postal_BAN, Etiquette_DPE) %>%
+  summarise(count = n())
+
+# Graphique de répartition des étiquettes DPE pour les top 10 codes postaux
+ggplot(top_codes_DPE, aes(x = reorder(Code_Postal_BAN, -count), y = count, fill = Etiquette_DPE)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Répartition des Étiquettes DPE (Top 10 Codes Postaux)", 
+       x = "Code Postal", y = "Nombre de Logements") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set3")
+```
+
+## Consommation de Chauffage par Type de Logement (logement ancien vs neuf)
+
+```{r}
+# Comparaison de la consommation de chauffage entre les logements anciens et neufs
+ggplot(all_data, aes(x = Type_DPE, y = Conso_chauffage_é_finale, fill = Type_DPE)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  labs(title = "Comparaison de la Consommation Moyenne de Chauffage", 
+       x = "Type de Logement", y = "Consommation Moyenne de Chauffage (kWh)") +
+  theme_minimal() +
+  scale_fill_manual(values = c("ancien" = "lightblue", "neuf" = "lightgreen"))
+```
+
+## Consommation de Chauffage par Région
+
+```{r}
+# Ajout d'une statistique supplémentaire: consommation de chauffage moyenne par région
+all_data$Region <- substr(all_data$Code_Postal_BAN, 1, 2)  # Extraire les 2 premiers chiffres du code postal pour approximer la région
+region_consumption <- all_data %>%
+  group_by(Region) %>%
+  summarise(mean_chauffage_region = mean(Conso_chauffage_é_finale, na.rm = TRUE)) %>%
+  arrange(desc(mean_chauffage_region))
+
+# Affichage du graphique par région
+ggplot(region_consumption, aes(x = reorder(Region, -mean_chauffage_region), y = mean_chauffage_region)) +
+  geom_bar(stat = "identity", fill = "lightcoral") +
+  labs(title = "Consommation Moyenne de Chauffage par Région", 
+       x = "Région (approximée)", y = "Consommation Moyenne de Chauffage (kWh)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+# Pourcentage de logements par étiquette DPE
+dpe_counts <- all_data %>%
+  group_by(Etiquette_DPE) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+ggplot(dpe_counts, aes(x = Etiquette_DPE, y = percentage, fill = Etiquette_DPE)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Pourcentage de Logements par Étiquette DPE", 
+       x = "Étiquette DPE", y = "Pourcentage (%)") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Pastel1")
+
+
+```
+
+```{r}
+# Répartition des classes DPE entre les logements anciens et neufs
+ggplot(all_data, aes(x = Type_DPE, fill = Etiquette_DPE)) +
+  geom_bar(position = "fill") +
+  labs(title = "Répartition des Classes DPE dans les Logements Anciens vs Neufs", 
+       x = "Type de Logement", y = "Proportion") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+
+```
+
+```{r}
+# Classement des classes DPE par région
+top_dpe_regions <- all_data %>%
+  group_by(Region, Etiquette_DPE) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  group_by(Region) %>%
+  slice_max(count, n = 5)
+
+ggplot(top_dpe_regions, aes(x = reorder(Etiquette_DPE, -count), y = count, fill = Etiquette_DPE)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ Region) +
+  labs(title = "Top 5 Classes DPE par Région", x = "Étiquette DPE", y = "Nombre de Logements") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Paired")
+
+```
+
+
+
