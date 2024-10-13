@@ -1,3 +1,4 @@
+# Chargement des bibliothèques
 library(shiny)
 library(ggplot2)
 library(leaflet)
@@ -5,8 +6,7 @@ library(dplyr)
 library(shinythemes)
 
 # Chargement des données
-df_neufs <- read.csv("C:/Users/Utilisateur/Documents/Cours BUT 2éme année/R studio/neufs_69.csv", sep = ",", dec = ".", header = TRUE)
-df_existants <- read.csv("C:/Users/Utilisateur/Documents/Cours BUT 2éme année/R studio/existants_69.csv", sep = ",", dec = ".", header = TRUE)
+df_logement <- read.csv("C:/Users/Utilisateur/Documents/Cours BUT 2éme année/R studio/logement_finale.csv", sep = ",", dec = ".", header = TRUE)
 
 # Interface utilisateur (UI)
 ui <- tagList(
@@ -28,8 +28,6 @@ ui <- tagList(
     # Autres onglets
     tabPanel("Statistiques générales", 
              sidebarPanel(
-               radioButtons("dataset", "Sélectionner le jeu de données:",
-                            choices = list("Logements Neufs" = "neufs", "Logements Existants" = "existants")),
                textInput("txt", "Text input:", "general"),
                sliderInput("slider", "Slider input:", 1, 100, 30),
                tags$h5("Default actionButton:"),
@@ -40,15 +38,29 @@ ui <- tagList(
              mainPanel(
                tabsetPanel(
                  tabPanel("Répartition des types de bâtiments", 
-                          plotOutput("hist_type_batiment")
+                          plotOutput("hist_type_batiment"),
+                          downloadButton("download_hist_type_batiment", "Télécharger le graphique (.png)")
                  ),
-                 tabPanel("Nuage de points - Code postal",  # Nouvel onglet pour le nuage de points
-                          plotOutput("scatter_code_postal")
+                 tabPanel("Nuage de points - Coût de chauffage",  
+                          plotOutput("scatter_coût_chauffage"),
+                          verbatimTextOutput("debug_info"),  # Afficher les informations de débogage
+                          downloadButton("download_scatter_coût_chauffage", "Télécharger le graphique (.png)")
                  ),
                  tabPanel("Nb logement / Etiquette DPE", 
-                          plotOutput("hist_dpe")
+                          plotOutput("hist_dpe"),
+                          downloadButton("download_hist_dpe", "Télécharger le graphique (.png)")
                  )
                )
+             )
+    ),
+    # Ajout de l'onglet "Contexte"
+    tabPanel("Contexte", 
+             sidebarPanel(),
+             mainPanel(
+               h3("Aperçu des données"),
+               tableOutput("data_preview"),
+               h3("Structure des données"),
+               verbatimTextOutput("data_structure")
              )
     ),
     tabPanel("Cartographie", 
@@ -56,21 +68,50 @@ ui <- tagList(
     ),
     tabPanel("KPI et graphiques", 
              fluidRow(
-               column(4, h3("KPI"),
-                      textOutput("kpi_nb_logements"),
-                      textOutput("kpi_surface_moyenne"),
-                      textOutput("kpi_logements_neufs")
-               ),
-               column(4, h3("Diagramme Circulaire - Types de bâtiments"),
-                      plotOutput("pie_chart")
-               ),
-               column(4, h3("Boîte à Moustaches - Surface par DPE"),
-                      plotOutput("boxplot_dpe")
+               # Sélecteur pour le code postal
+               column(12, 
+                      h3("Filtrer par Code Postal"),
+                      selectInput("code_postal", "Choisir un code postal :", 
+                                  choices = unique(df_logement$Code_postal_.BAN.),  # Remplacez par le nom de votre colonne de code postal
+                                  selected = unique(df_logement$Code_postal_.BAN.)[1],
+                                  multiple = FALSE)  # Permettre la sélection d'un seul code postal
                )
+             ),
+             fluidRow(
+               # Ajout des KPI en haut
+               column(12, h3("KPI"),
+                      textOutput("kpi_nb_logements"),
+                      textOutput("kpi_surface_moyenne")
+                      # textOutput("kpi_logements_neufs")  # Si vous avez besoin de ce KPI, décommentez cette ligne
+               )
+             ),
+             fluidRow(
+               # Ajout des graphiques en bas
+               column(6, h3("Diagramme Circulaire - Types de bâtiments"),
+                      plotOutput("pie_chart"),
+                      downloadButton("download_pie_chart", "Télécharger le graphique (.png)")
+               ),
+               column(6, h3("Boîte à Moustaches - Surface par DPE"),
+                      plotOutput("boxplot_dpe"),
+                      downloadButton("download_boxplot_dpe", "Télécharger le graphique (.png)")
+               )
+             )
+    ),
+    # Nouvel onglet pour la régression linéaire
+    tabPanel("Régression Linéaire",
+             sidebarPanel(
+               selectInput("var_x", "Choisissez la variable X :", choices = names(df_logement), selected = names(df_logement)[1]),
+               selectInput("var_y", "Choisissez la variable Y :", choices = names(df_logement), selected = names(df_logement)[2]),
+               actionButton("calculate", "Calculer la régression")
+             ),
+             mainPanel(
+               plotOutput("scatter_regression"),
+               verbatimTextOutput("correlation_text")
              )
     )
   )
 )
+
 
 # Serveur (server)
 server <- function(input, output, session) {
@@ -83,78 +124,154 @@ server <- function(input, output, session) {
     # Autoriser toute combinaison de nom d'utilisateur et mot de passe
     user_authenticated(TRUE)
     output$login_status <- renderText("Connexion réussie!")
-    updateTabsetPanel(session, "tabs", selected = "Statistiques générales")  # Aller à l'onglet Statistiques
   })
   
-  # Sélection des données en fonction du choix de l'utilisateur
+  # Sélection des données
   selected_data <- reactive({
     req(user_authenticated())  # Nécessite une connexion réussie
-    if (input$dataset == "neufs") {
-      df_neufs
-    } else {
-      df_existants
-    }
+    df_logement
   })
   
-  # Plots et autres fonctions de l'application, conditionnés par l'authentification
+  # Aperçu des données
+  output$data_preview <- renderTable({
+    req(user_authenticated())
+    head(selected_data(), 10)  # Affiche les 10 premières lignes
+  })
+  
+  # Structure des données
+  output$data_structure <- renderPrint({
+    req(user_authenticated())
+    str(selected_data())  # Affiche la structure des colonnes du jeu de données
+  })
+  
+  # Histogramme des types de bâtiments
   output$hist_type_batiment <- renderPlot({
     req(user_authenticated())
     data <- selected_data()
-    req(data)
-    if ("Type_bâtiment" %in% colnames(data)) {
-      ggplot(data, aes(x = Type_bâtiment)) +
-        geom_bar(fill = "red", color = "white") +
-        theme_minimal() +
-        labs(title = "Répartition des types de bâtiments", x = "Type de bâtiment", y = "Nombre de logements")
-    } else {
-      print("La colonne 'Type_bâtiment' n'existe pas.")
-    }
+    ggplot(data, aes(x = Type_bâtiment)) +
+      geom_bar(fill = "red", color = "white") +
+      theme_minimal() +
+      labs(title = "Répartition des types de bâtiments", x = "Type de bâtiment", y = "Nombre de logements")
   })
   
+  # Téléchargement de l'histogramme
+  output$download_hist_type_batiment <- downloadHandler(
+    filename = function() { "hist_type_batiment.png" },
+    content = function(file) {
+      png(file)
+      print(ggplot(selected_data(), aes(x = Type_bâtiment)) +
+              geom_bar(fill = "red", color = "white") +
+              theme_minimal() +
+              labs(title = "Répartition des types de bâtiments", x = "Type de bâtiment", y = "Nombre de logements"))
+      dev.off()
+    }
+  )
   
-  # Nuage de points pour les codes postaux
-  output$scatter_code_postal <- renderPlot({
+  # Vérifiez les noms des colonnes et les valeurs manquantes
+  print(colnames(df_logement))
+  print(head(df_logement))
+  
+  # Nettoyage des données : filtre des valeurs manquantes pour la consommation de chauffage et la surface habitable
+  df_logement_clean <- df_logement %>%
+    filter(!is.na(Coût_chauffage) & !is.na(Surface_habitable_logement))
+  
+  # Créer le nuage de points pour le coût de chauffage par type de bâtiment
+  output$scatter_coût_chauffage <- renderPlot({
     req(user_authenticated())
-    data <- selected_data()
-    req(data)
-    if ("Code_postal_.BAN." %in% colnames(data) && "Surface_habitable_logement" %in% colnames(data)) {
-      ggplot(data, aes(x = Code_postal_.BAN., y = Surface_habitable_logement)) +
-        geom_point(alpha = 0.6, color = "blue") +
-        theme_minimal() +
-        labs(title = "Nuage de points - Code postal vs Surface habitable", 
-             x = "Code Postal", 
-             y = "Surface Habitable (m²)") +
-        theme(legend.position = "none")
-    } else {
-      print("Les colonnes 'Code_postal_.BAN.' ou 'Surface_habitable_logement' n'existent pas.")
-    }
+    ggplot(df_logement_clean, aes(x = Surface_habitable_logement, y = Coût_chauffage)) +
+      geom_point(alpha = 0.6, color = "blue") +
+      theme_minimal() +
+      labs(title = "Nuage de points - Coût de chauffage vs Surface habitable",
+           x = "Surface Habitable (m²)",
+           y = "Coût de Chauffage (€)") +
+      theme(legend.position = "none")
   })
   
+  # Téléchargement du nuage de points
+  output$download_scatter_coût_chauffage <- downloadHandler(
+    filename = function() { "scatter_coût_chauffage.png" },
+    content = function(file) {
+      png(file)
+      print(ggplot(df_logement_clean, aes(x = Surface_habitable_logement, y = Coût_chauffage)) +
+              geom_point(alpha = 0.6, color = "blue") +
+              theme_minimal() +
+              labs(title = "Nuage de points - Coût de chauffage vs Surface habitable", 
+                   x = "Surface Habitable (m²)", 
+                   y = "Coût de Chauffage (€)") +
+              theme(legend.position = "none"))
+      dev.off()
+    }
+  )
+  
+  # Histogramme DPE
   output$hist_dpe <- renderPlot({
     req(user_authenticated())
     data <- selected_data()
-    req(data)
-    if ("Etiquette_DPE" %in% colnames(data)) {
-      ggplot(data, aes(x = Etiquette_DPE)) +
-        geom_bar(fill = "red", color = "white") +
-        theme_minimal() +
-        labs(title = "Nombre de logements par étiquette DPE", x = "Étiquette DPE", y = "Nombre de logements")
-    } else {
-      print("La colonne 'Etiquette_DPE' n'existe pas.")
-    }
+    ggplot(data, aes(x = Etiquette_DPE)) +
+      geom_bar(fill = "red", color = "white") +
+      theme_minimal() +
+      labs(title = "Nombre de logements par étiquette DPE", x = "Étiquette DPE", y = "Nombre de logements")
   })
   
+  # Téléchargement de l'histogramme DPE
+  output$download_hist_dpe <- downloadHandler(
+    filename = function() { "hist_dpe.png" },
+    content = function(file) {
+      png(file)
+      print(ggplot(selected_data(), aes(x = Etiquette_DPE)) +
+              geom_bar(fill = "red", color = "white") +
+              theme_minimal() +
+              labs(title = "Nombre de logements par étiquette DPE", x = "Étiquette DPE", y = "Nombre de logements"))
+      dev.off()
+    }
+  )
+  
+  # Aperçu des données
+  output$data_preview <- renderTable({
+    req(user_authenticated())
+    head(selected_data(), 10)  # Affiche les 10 premières lignes
+  })
+  
+  # Structure des données
+  output$data_structure <- renderPrint({
+    req(user_authenticated())
+    str(selected_data())  # Affiche la structure des colonnes du jeu de données
+  })
+  
+  # Cartographie - modification pour limiter à 1000 points
   output$carte <- renderLeaflet({
     req(user_authenticated())
     data <- selected_data()
-    req(data)
-    if (all(c("lon", "lat", "Etiquette_DPE", "Code_postal_.BAN.") %in% colnames(data))) {
+    
+    # Filtrer les données pour supprimer les lignes avec des valeurs manquantes pour lon et lat
+    data_filtered <- data %>%
+      filter(!is.na(lon) & !is.na(lat) & lon != 0 & lat != 0)  # Suppression des valeurs NA et 0
+    
+    # Définir les limites de la zone de Lyon et de ses arrondissements
+    lyon_lat_min <- 45.70
+    lyon_lat_max <- 45.85
+    lyon_lon_min <- 4.80
+    lyon_lon_max <- 4.90  # Limite ajustée pour Lyon uniquement
+    
+    # Filtrer pour ne garder que les données de Lyon et ses arrondissements
+    data_filtered <- data_filtered %>%
+      filter(lat >= lyon_lat_min & lat <= lyon_lat_max &
+               lon >= lyon_lon_min & lon <= lyon_lon_max)
+    
+    # Limiter les points à 1000 en prenant un échantillon aléatoire
+    if (nrow(data_filtered) > 1000) {
+      data_filtered <- data_filtered %>% sample_n(1000)
+    }
+    
+    # Vérifier s'il y a des données à afficher
+    if (nrow(data_filtered) > 0) {
+      # Palette de couleurs
       color_pal <- colorFactor(
-        palette = c("green", "lightgreen", "yellow", "orange", "darkorange", "red", "darkred"),
+        palette = c("lightgreen", "yellow", "orange", "darkorange", "red", "darkred"),
         levels = c("A", "B", "C", "D", "E", "F", "G")
       )
       
-      leaflet(data) %>%
+      leaflet(data_filtered) %>%
         addTiles() %>%
         setView(lng = 4.85, lat = 45.75, zoom = 12) %>%
         addCircleMarkers(~lon, ~lat,
@@ -172,67 +289,86 @@ server <- function(input, output, session) {
         addLegend("bottomright", pal = color_pal, values = ~Etiquette_DPE,
                   title = "Etiquette DPE", opacity = 1)
     } else {
-      print("Les colonnes 'lon', 'lat', 'Etiquette_DPE' ou 'Code_postal_.BAN.' n'existent pas.")
+      leaflet() %>%
+        addTiles() %>%
+        setView(lng = 4.85, lat = 45.75, zoom = 12) %>%
+        addPopups(lng = 4.85, lat = 45.75, "Aucune donnée valide à afficher.")
     }
   })
   
+   # Calcul des KPI
   output$kpi_nb_logements <- renderText({
-    req(user_authenticated())
-    data <- selected_data()
-    req(data)
+    req(user_authenticated())  # Vérifie si l'utilisateur est authentifié
+    data <- selected_data()     # Sélection des données
+    
+    # Affiche le nombre total de logements
     paste("Nombre total de logements :", nrow(data))
   })
   
   output$kpi_surface_moyenne <- renderText({
-    req(user_authenticated())
-    data <- selected_data()
-    req(data)
-    paste("Surface habitable moyenne :", round(mean(data$Surface_habitable_logement, na.rm = TRUE), 2), "m²")
+    req(user_authenticated())  # Vérifie si l'utilisateur est authentifié
+    data <- selected_data()     # Sélection des données
+    
+    # Calcul de la surface habitable moyenne
+    surface_moyenne <- round(mean(data$Surface_habitable_logement, na.rm = TRUE), 2)
+    
+    # Affiche la surface habitable moyenne
+    paste("Surface habitable moyenne :", surface_moyenne, "m²")
   })
-  
-  output$kpi_logements_neufs <- renderText({
-    req(user_authenticated())
-    data <- selected_data()
-    req(data)
-    nb_neufs <- nrow(df_neufs)
-    nb_total <- nrow(df_neufs) + nrow(df_existants)
-    pourcentage_neufs <- round((nb_neufs / nb_total) * 100, 2)
-    paste("Pourcentage de logements neufs :", pourcentage_neufs, "%")
-  })
-  
+  # Diagramme circulaire des types de bâtiments
   output$pie_chart <- renderPlot({
     req(user_authenticated())
     data <- selected_data()
-    req(data)
-    if ("Type_bâtiment" %in% colnames(data)) {
-      type_counts <- data %>%
-        count(Type_bâtiment) %>%
-        mutate(percentage = n / sum(n) * 100) # Calcul des pourcentages
-      
-      ggplot(type_counts, aes(x = "", y = percentage, fill = Type_bâtiment)) +
-        geom_bar(stat = "identity", width = 1) +
-        coord_polar("y") +
-        theme_void() +
-        labs(title = "Répartition des types de bâtiments") +
-        geom_text(aes(label = paste0(round(percentage, 1), "%")), position = position_stack(vjust = 0.5)) # Ajout des étiquettes de pourcentage
-    } else {
-      print("La colonne 'Type_bâtiment' n'existe pas.")
-    }
+    type_counts <- as.data.frame(table(data$Type_bâtiment))
+    colnames(type_counts) <- c("Type de bâtiment", "Nombre")
+    
+    ggplot(type_counts, aes(x = "", y = Nombre, fill = `Type de bâtiment`)) +
+      geom_bar(width = 1, stat = "identity") +
+      coord_polar(theta = "y") +
+      theme_void() +
+      labs(title = "Répartition des types de bâtiments")
   })
   
+  # Téléchargement du diagramme circulaire
+  output$download_pie_chart <- downloadHandler(
+    filename = function() { "pie_chart.png" },
+    content = function(file) {
+      png(file)
+      print(ggplot(as.data.frame(table(selected_data()$Type_bâtiment)), aes(x = "", y = Freq, fill = Var1)) +
+              geom_bar(width = 1, stat = "identity") +
+              coord_polar(theta = "y") +
+              theme_void() +
+              labs(title = "Répartition des types de bâtiments"))
+      dev.off()
+    }
+  )
+  
+  # Boîte à moustaches de surface par DPE
   output$boxplot_dpe <- renderPlot({
     req(user_authenticated())
     data <- selected_data()
-    req(data)
-    if (all(c("Surface_habitable_logement", "Etiquette_DPE") %in% colnames(data))) {
-      ggplot(data, aes(x = Etiquette_DPE, y = Surface_habitable_logement)) +
-        geom_boxplot(fill = "lightblue", color = "darkblue") +
-        theme_minimal() +
-        labs(title = "Distribution des surfaces par étiquette DPE", x = "Étiquette DPE", y = "Surface habitable (m²)")
-    } else {
-      print("Les colonnes 'Surface_habitable_logement' ou 'Etiquette_DPE' n'existent pas.")
-    }
+    ggplot(data, aes(x = Etiquette_DPE, y = Surface_habitable_logement)) +
+      geom_boxplot(fill = "lightblue") +
+      theme_minimal() +
+      labs(title = "Boîte à Moustaches - Surface par Étiquette DPE", 
+           x = "Étiquette DPE", 
+           y = "Surface Habitable (m²)")
   })
+  
+  # Téléchargement de la boîte à moustaches
+  output$download_boxplot_dpe <- downloadHandler(
+    filename = function() { "boxplot_dpe.png" },
+    content = function(file) {
+      png(file)
+      print(ggplot(selected_data(), aes(x = Etiquette_DPE, y = Surface_habitable_logement)) +
+              geom_boxplot(fill = "lightblue") +
+              theme_minimal() +
+              labs(title = "Boîte à Moustaches - Surface par Étiquette DPE", 
+                   x = "Étiquette DPE", 
+                   y = "Surface Habitable (m²)"))
+      dev.off()
+    }
+  )
 }
 
 # Exécution de l'application
