@@ -19,11 +19,22 @@ library(dplyr)
 
 Ce rapport présente une analyse des performances énergétiques des logements en France, en se basant sur les données disponibles.
 
-# Chargement des Données
+# PArtie 1 Chargement des Données
 
 ```{r}
 # Chargement des données CSV depuis l'emplacement local
-logement_data <- read.csv("C:/Users/Utilisateur/Documents/Cours BUT 2éme année/R studio/logement_finale.csv", 
+
+# Définir l'URL du fichier ZIP sur GitHub
+url_zip <- "https://github.com/lgcgwen/iut_sd2_rshiny_enedis/raw/main/logement_finale%20-%20Copie.zip"
+
+# Télécharger le fichier ZIP
+download.file(url_zip, destfile = "logement_finale.zip", mode = "wb")
+
+# Décompresser le fichier ZIP
+unzip("logement_finale.zip")
+
+# Chargement des données CSV depuis le fichier décompressé
+logement_data <- read.csv("logement_finale.csv", 
                           sep = ",", dec = ".", header = TRUE, stringsAsFactors = FALSE)
 
 # Nettoyage des colonnes pour éviter les caractères spéciaux
@@ -36,7 +47,7 @@ dim(logement_data)
 head(logement_data)
 ```
 
-# KPI Pertinents
+# Partie 2  KPI Pertinents
 
 ```{r}
 # Calcul des moyennes des coûts et consommations pour l'ensemble des données
@@ -49,7 +60,7 @@ kpi_data <- logement_data %>%
 kpi_data
 ```
 
-
+# Partie 3 Graphiques ( histogramme, diagramme)
 
 ```{r}
 # Pourcentage de logements par étiquette DPE
@@ -66,5 +77,66 @@ ggplot(dpe_counts, aes(x = Etiquette_DPE, y = percentage, fill = Etiquette_DPE))
   scale_fill_brewer(palette = "Pastel1")
 
 ```
+
+
+```{r}
+# Calcul des sommes totales de chaque type de coût
+total_costs <- logement_data %>%
+  summarise(
+    Total_Coût_chauffage = sum(Coût_chauffage, na.rm = TRUE),
+    Total_Coût_éclairage = sum(Coût_éclairage, na.rm = TRUE),
+    Total_Coût_total_5_usages = sum(Coût_total_5_usages, na.rm = TRUE),
+    Total_Coût_auxiliaires = sum(Coût_auxiliaires, na.rm = TRUE),
+    Total_Coût_refroidissement = sum(Coût_refroidissement, na.rm = TRUE)
+  )
+
+# Transformation des données pour être utilisables dans ggplot
+cost_data <- data.frame(
+  Category = c("Coût Chauffage", "Coût Éclairage", "Coût Total 5 Usages", 
+               "Coût Auxiliaires", "Coût Refroidissement"),
+  Total = c(
+    total_costs$Total_Coût_chauffage,
+    total_costs$Total_Coût_éclairage,
+    total_costs$Total_Coût_total_5_usages,
+    total_costs$Total_Coût_auxiliaires,
+    total_costs$Total_Coût_refroidissement
+  )
+)
+
+# Calcul des pourcentages
+cost_data <- cost_data %>%
+  mutate(Percentage = Total / sum(Total) * 100)
+
+# Création d'un diagramme circulaire avec pourcentages
+ggplot(cost_data, aes(x = "", y = Total, fill = Category)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = paste0(round(Percentage, 1), "%")), 
+            position = position_stack(vjust = 0.5)) + # Ajout des étiquettes de pourcentages
+  labs(title = "Répartition des Coûts Énergétiques par Catégorie") +
+  theme_void() + # Pour enlever l'arrière-plan
+  scale_fill_brewer(palette = "Set3")
+```
+
+
+# Partie 4 : Matrice et coefficiant de correlation 
+
+```{r}
+# Charger la bibliothèque corrplot si elle n'est pas installée
+if (!require(corrplot)) install.packages('corrplot', dependencies=TRUE)
+library(corrplot)
+
+# Sélection des colonnes numériques pertinentes pour la matrice de corrélation
+vars <- logement_data %>%
+  select(Coût_chauffage, Coût_éclairage, Coût_ECS, Surface_habitable_logement)
+
+# Calcul de la matrice de corrélation
+cor_matrix <- cor(vars, use = "complete.obs")
+
+# Affichage de la matrice de corrélation
+corrplot(cor_matrix, method = "circle", type = "upper", tl.col = "black", tl.cex = 0.8)
+```
+
+
 
 
