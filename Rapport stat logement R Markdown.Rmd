@@ -19,8 +19,9 @@ library(dplyr)
 
 Ce rapport présente une analyse des performances énergétiques des logements en France, en se basant sur les données disponibles.
 
-# PArtie 1 Chargement des Données
+# Partie 1 Chargement des Données
 
+Afin de commencer ce rapport statistiques, nous avons tout d'abbord presenter le contexte avec un tableau des données avec leurs noms et quelques valeurs
 ```{r}
 # Chargement des données CSV depuis l'emplacement local
 
@@ -48,13 +49,23 @@ head(logement_data)
 ```
 
 # Partie 2  KPI Pertinents
-
+Dans cette parti on s'interesse a la preentation de quelques indicateurs interessants pour les variables de conso de chauffage, conso ECS et conso d'eclairage
 ```{r}
-# Calcul des moyennes des coûts et consommations pour l'ensemble des données
+# Calcul des moyennes, maximums et totaux des coûts et consommations pour l'ensemble des données
 kpi_data <- logement_data %>%
-  summarise(mean_chauffage = mean(Coût_chauffage, na.rm = TRUE),
-            mean_ECS = mean(Coût_ECS, na.rm = TRUE),
-            mean_eclairage = mean(Coût_éclairage, na.rm = TRUE))
+  summarise(
+    mean_chauffage = mean(Coût_chauffage, na.rm = TRUE),
+    max_chauffage = max(Coût_chauffage, na.rm = TRUE),
+    total_chauffage = sum(Coût_chauffage, na.rm = TRUE),
+    
+    mean_ECS = mean(Coût_ECS, na.rm = TRUE),
+    max_ECS = max(Coût_ECS, na.rm = TRUE),
+    total_ECS = sum(Coût_ECS, na.rm = TRUE),
+    
+    mean_eclairage = mean(Coût_éclairage, na.rm = TRUE),
+    max_eclairage = max(Coût_éclairage, na.rm = TRUE),
+    total_eclairage = sum(Coût_éclairage, na.rm = TRUE)
+  )
 
 # Affichage des KPI
 kpi_data
@@ -62,6 +73,7 @@ kpi_data
 
 # Partie 3 Graphiques ( histogramme, diagramme)
 
+Dans cette partie, on a utiliser des graphiques, notamment un hisotgramme avec la repartiton en % des etiquette_DPE et egalement un diagramme egalement en % qui represente la part de tout les couts (chauffage, energie, auxiliaire ...)
 ```{r}
 # Pourcentage de logements par étiquette DPE
 dpe_counts <- logement_data %>%
@@ -121,6 +133,9 @@ ggplot(cost_data, aes(x = "", y = Total, fill = Category)) +
 
 # Partie 4 : Matrice et coefficiant de correlation 
 
+Cette derniere partie comprends une matrice de correlation entre
+plusieurs variables (Coût_chauffage, Cout_eclairage,Cout_ECS et la surface habitable des logements). Il y a egalement un tableau pour resumer les coefficiants de la matrice
+
 ```{r}
 # Charger la bibliothèque corrplot si elle n'est pas installée
 if (!require(corrplot)) install.packages('corrplot', dependencies=TRUE)
@@ -135,7 +150,12 @@ cor_matrix <- cor(vars, use = "complete.obs")
 
 # Affichage de la matrice de corrélation
 corrplot(cor_matrix, method = "circle", type = "upper", tl.col = "black", tl.cex = 0.8)
+# Affichage des coefficients de corrélation sous forme de tableau
+cor_matrix
 ```
+
+On remarque grace a la matrice et aux coefficiants que la surface habitable du logement est fortement correler au cout d'eclairage. Au contraire le cout de chauffage et le cout d'eclairage sont tres peu correler entre eux.
+
 
 
 
