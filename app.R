@@ -5,8 +5,18 @@ library(leaflet)
 library(dplyr)
 library(shinythemes)
 
-# Chargement des données
-df_logement <- read.csv("C:/Users/Utilisateur/Documents/Cours BUT 2éme année/R studio/logement_finale.csv", sep = ",", dec = ".", header = TRUE)
+# Définir l'URL du fichier ZIP sur GitHub
+url_zip <- "https://github.com/lgcgwen/iut_sd2_rshiny_enedis/raw/main/logement_finale%20-%20Copie.zip"
+
+# Télécharger le fichier ZIP
+download.file(url_zip, destfile = "logement_finale.zip", mode = "wb")
+
+# Décompresser le fichier ZIP
+unzip("logement_finale.zip")
+
+# Charger les données
+df_logement <- read.csv("logement_finale.csv", sep = ",", dec = ".", header = TRUE)
+
 
 # Interface utilisateur (UI)
 ui <- tagList(
