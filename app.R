@@ -97,7 +97,7 @@ ui <- tagList(
                )
              )
     ),
-    # Nouvel onglet pour la régression linéaire
+    #onglet pour la régression linéaire
     tabPanel("Régression Linéaire",
              sidebarPanel(
                selectInput("var_x", "Choisissez la variable X :", choices = names(df_logement), selected = names(df_logement)[1]),
@@ -106,7 +106,8 @@ ui <- tagList(
              ),
              mainPanel(
                plotOutput("scatter_regression"),
-               verbatimTextOutput("correlation_text")
+               verbatimTextOutput("regression_summary"),  # Affichage du résumé de la régression
+               verbatimTextOutput("correlation_text")      # Affichage du coefficient de corrélation
              )
     )
   )
@@ -370,6 +371,54 @@ server <- function(input, output, session) {
     }
   )
 }
+# Régression linéaire et affichage des résultats
+observeEvent(input$calculate, {
+  req(user_authenticated())
+  
+  # Sélection des variables
+  var_x <- input$var_x
+  var_y <- input$var_y
+  
+  # Nettoyage des données : enlever les NA
+  data_clean <- selected_data() %>%
+    select(all_of(c(var_x, var_y))) %>%
+    na.omit()
+  
+  # Vérifiez si le dataframe est vide après nettoyage
+  if(nrow(data_clean) == 0) {
+    output$regression_summary <- renderPrint({"Aucune donnée valide pour effectuer la régression."})
+    output$scatter_regression <- renderPlot({ ggplot() + labs(title = "Aucune donnée à afficher") })
+    output$correlation_text <- renderText({"Aucune donnée valide pour calculer la corrélation."})
+    return()
+  }
+  
+  # Calcul de la régression
+  lm_model <- lm(as.formula(paste(var_y, "~", var_x)), data = data_clean)
+  
+  # Résumé du modèle
+  output$regression_summary <- renderPrint({
+    summary(lm_model)
+  })
+  
+  # Calcul du coefficient de corrélation
+  correlation_coefficient <- cor(data_clean[[var_x]], data_clean[[var_y]], use = "complete.obs")
+  
+  # Affichage du coefficient de corrélation
+  output$correlation_text <- renderText({
+    paste("Coefficient de corrélation entre", var_x, "et", var_y, ":", round(correlation_coefficient, 4))
+  })
+  
+  # Graphique de régression
+  output$scatter_regression <- renderPlot({
+    ggplot(data_clean, aes_string(x = var_x, y = var_y)) +
+      geom_point(alpha = 0.6, color = "blue") +
+      geom_smooth(method = "lm", col = "red") +
+      theme_minimal() +
+      labs(title = paste("Régression Linéaire:", var_y, "~", var_x),
+           x = var_x,
+           y = var_y)
+  })
+})
 
 # Exécution de l'application
 shinyApp(ui = ui, server = server)
